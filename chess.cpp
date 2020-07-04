@@ -1,7 +1,4 @@
-//
-// Created by keega on 6/17/2020.
-//
-#include <sstream>
+
 #include "chess.h"
 
 uint8_t pieceTypeFromChar(char c) {
