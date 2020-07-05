@@ -312,25 +312,115 @@ void addMovesForPiece(std::vector<Move> &moves, Board &b, const PieceElement &pe
     }
 }
 
-bool inCheck(const Board &b, bool isWhite) {
+bool pawnCanAttack(int pRank, int pFile, int tRank, int tFile, bool isWhite) {
     if (isWhite) {
-        PieceElement king = b.whitePieces[0];
-        for (PieceElement pe : b.blackPieces) {
-            if (isAttacking(b, false, pe, king.rank, king.file)) {
-                return true;
-            }
-        }
-        return false;
+        return tRank-pRank == 1 && std::abs(tFile-pFile) == 1;
     } else {
-        PieceElement king = b.blackPieces[0];
-        for (PieceElement pe : b.whitePieces) {
-            if (isAttacking(b, true, pe, king.rank, king.file)) {
-                return true;
-            }
-        }
-        return false;
+        return tRank-pRank == -1 && std::abs(tFile-pFile) == 1;
     }
 }
+
+bool checkLineForCheckThreat(const Board &b, int sRank, int sFile, int dRank, int dFile, bool kingIsWhite) {
+    int cRank = sRank;
+    int cFile = sFile;
+    while (true) {
+        cRank += dRank;
+        cFile += dFile;
+
+        uint8_t res = b.boardMap[cRank][cFile];
+        if (res == EMPTY) {
+            continue;
+        } else if (res == INVALID) {
+            return false;
+        } else {
+            bool pieceIsWhite = res < BLACK_LIST_START;
+            if (pieceIsWhite == kingIsWhite) {
+                return false;
+            } else {
+                uint8_t pieceType = pieceIsWhite ?
+                                    b.whitePieces[res-WHITE_LIST_START].pieceType :
+                                    b.blackPieces[res-BLACK_LIST_START].pieceType;
+                if (pieceType == KNIGHT) {
+                    return false;
+                } else if (pieceType == PAWN) {
+                    return pawnCanAttack(cRank, cFile, sRank, sFile, pieceIsWhite);
+                } else {
+                    return true;
+                }
+            }
+            return pieceIsWhite != kingIsWhite;
+        }
+    }
+}
+
+bool checkForPieceType(const Board &b, uint8_t targetPieceType, int rank, int file, bool targetColorIsWhite) {
+    uint8_t res = b.boardMap[rank][file];
+    if (res == EMPTY || res == INVALID) {
+        return false;
+    } else {
+        bool pieceIsWhite = res < BLACK_LIST_START;
+        if (pieceIsWhite != targetColorIsWhite) {
+            return false;
+        }
+
+        uint8_t pieceType = pieceIsWhite ?
+                            b.whitePieces[res-WHITE_LIST_START].pieceType :
+                            b.blackPieces[res-BLACK_LIST_START].pieceType;
+
+        return pieceType == targetPieceType;
+    }
+}
+
+bool knightCanAttackPosition(const Board &b, int rank, int file, bool targetColorIsWhite) {
+    for (int dRank = -2; dRank <= 2; dRank++) {
+        if (dRank == 0) {
+            continue;
+        }
+
+        int dFile = std::abs(dRank) == 2 ? 1 : 2;
+        if (checkForPieceType(b, KNIGHT, rank+dRank, file-dFile, targetColorIsWhite) ||
+                checkForPieceType(b, KNIGHT, rank+dRank, file+dFile, targetColorIsWhite)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool inCheck(const Board &b, bool isWhite) {
+    const PieceElement &king(isWhite ? b.whitePieces[0] : b.blackPieces[0]);
+
+    return
+            checkLineForCheckThreat(b, king.rank, king.file, 1, 1, isWhite) ||
+            checkLineForCheckThreat(b, king.rank, king.file, 1, 0, isWhite) ||
+            checkLineForCheckThreat(b, king.rank, king.file, 1, -1, isWhite) ||
+            checkLineForCheckThreat(b, king.rank, king.file, 0, 1, isWhite) ||
+            checkLineForCheckThreat(b, king.rank, king.file, 0, -1, isWhite) ||
+            checkLineForCheckThreat(b, king.rank, king.file, -1, 1, isWhite) ||
+            checkLineForCheckThreat(b, king.rank, king.file, -1, 0, isWhite) ||
+            checkLineForCheckThreat(b, king.rank, king.file, -1, -1, isWhite) ||
+            knightCanAttackPosition(b, king.rank, king.file, !isWhite);
+}
+
+//bool inCheck(const Board &b, bool isWhite) {
+//    if (isWhite) {
+//        PieceElement king = b.whitePieces[0];
+//        for (PieceElement pe : b.blackPieces) {
+//            if (isAttacking(b, false, pe, king.rank, king.file)) {
+//                return true;
+//            }
+//        }
+//        return false;
+//    } else {
+//        PieceElement king = b.blackPieces[0];
+//        for (PieceElement pe : b.whitePieces) {
+//            if (isAttacking(b, true, pe, king.rank, king.file)) {
+//                return true;
+//            }
+//        }
+//        return false;
+//    }
+//}
+
 
 std::vector<Move> getRawMoves(Board &b) {
     std::vector<Move> moves;
@@ -538,7 +628,7 @@ double getCheckmateScore(bool whiteCheckmate) {
     return (whiteCheckmate ? 1 : -1) * std::numeric_limits<double>::max();
 }
 
-bool isBetterEvaluationResult(const EvaluationResult &e1, const EvaluationResult &e2, bool whiteTurn) {
+bool isBetterEvaluationResult(const PositionEvaluation &e1, const PositionEvaluation &e2, bool whiteTurn) {
     if (whiteTurn) {
         if (e1.value > e2.value) {
             return true;
@@ -567,28 +657,32 @@ bool isBetterEvaluationResult(const EvaluationResult &e1, const EvaluationResult
     return false;
 }
 
-EvaluationResult evaluateBoard(Board &b, int maxDepth) {
-    if (maxDepth == 0) {
+PositionEvaluation evaluateHelper(Board &b, int depth, Statistics &stats) {
+    stats.methodCalls++;
+    if (depth == 0) {
         double score = scoreBoard(b);
-        return EvaluationResult(score, std::vector<Move>());
+        stats.leafNodesReached++;
+        return PositionEvaluation(score, std::vector<Move>());
     }
 
     std::vector<Move> moves = getLegalMoves(b);
     if (moves.empty()) {
         if (inCheck(b, b.whiteToMove)) {
-            return EvaluationResult(getCheckmateScore(!b.whiteToMove), std::vector<Move>());
+            stats.checkMateEvaluations++;
+            return PositionEvaluation(getCheckmateScore(!b.whiteToMove), std::vector<Move>());
         } else {
-            return EvaluationResult(0, std::vector<Move>());
+            stats.staleMateEvaluations++;
+            return PositionEvaluation(0, std::vector<Move>());
         }
     }
 
     Move bestMove;
-    EvaluationResult best(0, std::vector<Move>());
+    PositionEvaluation best(0, std::vector<Move>());
     bool haveBest = false;
 
     for (const Move &m : moves) {
         b.doMove(m);
-        EvaluationResult res = evaluateBoard(b, maxDepth-1);
+        PositionEvaluation res = evaluateHelper(b, depth - 1, stats);
         b.undoMove(m);
 
         if (!haveBest || isBetterEvaluationResult(res, best, b.whiteToMove)) {
@@ -602,6 +696,16 @@ EvaluationResult evaluateBoard(Board &b, int maxDepth) {
 
     return best;
 }
+
+Evaluation evaluateBoard(Board &b, int maxDepth) {
+    Evaluation e;
+    auto start = std::chrono::system_clock::now();
+    e.pos = evaluateHelper(b, maxDepth, e.stats);
+    auto end = std::chrono::system_clock::now();
+    e.stats.evaluationDurationMillis = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    return e;
+}
+
 
 std::ostream &operator<<(std::ostream &os, const PieceElement &pe) {
     return os << '(' << pieceTypeToChar(pe.pieceType) << ',' << (int)pe.rank << ',' << (int)pe.file << ')';
@@ -642,10 +746,15 @@ std::ostream &operator<<(std::ostream &os, const Move &m) {
     << unAdjRank(m.startRank)
     << unAdjFile(m.destFile)
     << unAdjRank(m.destRank);
-
 }
 
-EvaluationResult::EvaluationResult(double value, const std::vector<Move> &bestMovePath) : value(value),
+std::ostream &operator<<(std::ostream &os, const Statistics &s) {
+    os << "executionTimeMillis: " << s.evaluationDurationMillis << " functionCalls: " << s.methodCalls << " leafNodes: " << s.leafNodesReached;
+    return os;
+}
+
+
+PositionEvaluation::PositionEvaluation(double value, const std::vector<Move> &bestMovePath) : value(value),
                                                                                           bestMovePath(bestMovePath) {}
 bool PieceElement::operator==(const PieceElement &rhs) const {
     return pieceType == rhs.pieceType &&
@@ -675,8 +784,8 @@ bool Board::operator==(const Board &rhs) const {
         whiteToMove == rhs.whiteToMove;
 }
 
-std::string evaluationValueToString(const EvaluationResult &res) {
-    if (std::abs(res.value) == std::numeric_limits<double>().max()) {
+std::string evaluationValueToString(const PositionEvaluation &res) {
+    if (std::fabs(res.value) == std::numeric_limits<double>().max()) {
         return std::string("#") + std::to_string((res.bestMovePath.size()+1)/2);
     } else {
         return std::to_string(res.value);
@@ -689,6 +798,39 @@ Board::Board(const Board &rhs) : whitePieces(rhs.whitePieces), blackPieces(rhs.b
             boardMap[r][f] = rhs.boardMap[r][f];
         }
     }
+}
+
+std::string Board::toFen() const {
+    std::string fen;
+    for (int r = adjRank(8); r >= adjRank(1); r--) {
+        int curEmpty = 0;
+        for (int f = adjFile('a'); f <= adjFile('h'); f++) {
+            uint8_t res = boardMap[r][f];
+            if (res == EMPTY) {
+                curEmpty++;
+            } else {
+                if (res < BLACK_LIST_START) {
+                    uint8_t pieceType = whitePieces[res-WHITE_LIST_START].pieceType;
+                    char c = pieceTypeToChar(pieceType);
+                    fen += std::toupper(c);
+                } else {
+                    uint8_t pieceType = blackPieces[res-BLACK_LIST_START].pieceType;
+                    char c = pieceTypeToChar(pieceType);
+                    fen += c;
+                }
+
+            }
+        }
+        if (curEmpty > 0) {
+            fen += std::to_string(curEmpty);
+        }
+        if (r != adjRank(1)) {
+            fen += "/";
+        }
+    }
+    fen += " ";
+    fen += (whiteToMove ? "w" : "b");
+    return fen;
 }
 
 Move moveFromString(const std::string &s, const Board &b) {
@@ -718,3 +860,4 @@ Move moveFromString(const std::string &s, const Board &b) {
     bool isPromote = pieceType == PAWN && dRank == (b.whiteToMove ? adjRank(8) : adjRank(1));
     return {pieceType, sRank, sFile, dRank, dFile, captureType, captureIdx, isPromote};
 }
+

@@ -5,13 +5,13 @@
 #ifndef CHESS_CHESS_H
 #define CHESS_CHESS_H
 
-#include <stdint-gcc.h>
+#include <cmath>
 #include <string>
 #include <vector>
-#include <assert.h>
 #include <iostream>
 #include <algorithm>
 #include <limits>
+#include <chrono>
 
 const uint8_t EMPTY = 16;
 const uint8_t KING = 1;
@@ -79,16 +79,34 @@ struct Board {
     explicit Board (std::string fen);
     Board(const Board &rhs);
 
-    bool operator==(const Board &rhs) const;
     void doMove(const Move &m);
     void undoMove(const Move &m);
+
+    bool operator==(const Board &rhs) const;
     char getCharForBoardMapValue(int rank, int file) const;
+    std::string toFen() const;
 };
 
-struct EvaluationResult {
+struct Statistics {
+    long leafNodesReached = 0;
+    long methodCalls = 0;
+    long checkMateEvaluations = 0;
+    long staleMateEvaluations = 0;
+    long evaluationDurationMillis = 0;
+
+};
+
+struct PositionEvaluation {
     double value;
     std::vector<Move> bestMovePath;
-    EvaluationResult(double value, const std::vector<Move> &bestMovePath);
+
+    PositionEvaluation() = default;
+    PositionEvaluation(double value, const std::vector<Move> &bestMovePath);
+};
+
+struct Evaluation {
+    Statistics stats;
+    PositionEvaluation pos;
 };
 
 std::ostream& operator<<(std::ostream &os, const Board &b);
@@ -96,11 +114,13 @@ std::ostream& operator<<(std::ostream &os, const PieceElement &pe);
 std::ostream& operator<<(std::ostream &os, const std::vector<PieceElement> &pList);
 std::ostream& operator<<(std::ostream &os, const Move &m);
 std::ostream& operator<<(std::ostream &os, const std::vector<Move> &mList);
+std::ostream& operator<<(std::ostream &os, const Statistics &s);
 
 
+bool inCheck(const Board &b, bool isWhite);
 double sumPieceList(const std::vector<PieceElement> &pieceList);
-EvaluationResult evaluateBoard(Board &b, int maxDepth);
-std::string evaluationValueToString(const EvaluationResult &res);
+std::string evaluationValueToString(const PositionEvaluation &res);
 Move moveFromString(const std::string &s, const Board &b);
+Evaluation evaluateBoard(Board &b, int maxDepth);
 
 #endif //CHESS_CHESS_H
