@@ -23,7 +23,7 @@ void play(std::string fen, bool playerIsWhite, int depth) {
                 std::cout << evaluationValueToString(res.pos) << '\n';
                 return;
             }
-//            std::cout << res.stats << '\n';
+            std::cout << res.stats << '\n';
             Move move = res.pos.bestMovePath[0];
             std::cout << move << std::endl;
             board.doMove(move);
