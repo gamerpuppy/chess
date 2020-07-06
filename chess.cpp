@@ -194,23 +194,47 @@ void getMovesForPath(std::vector<Move> &moves, const Board &b, int sRank, int sF
     }
 }
 
-void addMovesForDiagonals(std::vector<Move> &moves, const Board &b, int sRank, int sFile, uint8_t pieceType) {
-    getMovesForPath(moves, b, sRank, sFile, pieceType, -1, -1);
-    getMovesForPath(moves, b, sRank, sFile, pieceType, -1, 1);
-    getMovesForPath(moves, b, sRank, sFile, pieceType, 1, -1);
-    getMovesForPath(moves, b, sRank, sFile, pieceType, 1, 1);
+void addMovesForDiagonals(std::vector<Move> &moves, const Board &b, int sRank, int sFile, uint8_t pieceType, bool isPinned) {
+    if (isPinned) {
+        const PieceElement &k = b.whiteToMove ? b.whitePieces[0] : b.blackPieces[0];
+        if (k.rank - sRank == 0 || k.file - sFile == 0) {
+            return;
+        }
+        int dRank = (k.rank - sRank) / std::abs(k.rank - sRank);
+        int dFile = (k.file - sFile) / std::abs(k.file - sFile);
+        getMovesForPath(moves, b, sRank, sFile, pieceType, dRank, dFile);
+        getMovesForPath(moves, b, sRank, sFile, pieceType, -dRank, -dFile);
+
+    } else {
+        getMovesForPath(moves, b, sRank, sFile, pieceType, -1, -1);
+        getMovesForPath(moves, b, sRank, sFile, pieceType, -1, 1);
+        getMovesForPath(moves, b, sRank, sFile, pieceType, 1, -1);
+        getMovesForPath(moves, b, sRank, sFile, pieceType, 1, 1);
+    }
+
 }
 
-void addMovesForDirectPath(std::vector<Move> &moves, const Board &b, int sRank, int sFile, uint8_t pieceType) {
-    getMovesForPath(moves, b, sRank, sFile, pieceType, -1, 0);
-    getMovesForPath(moves, b, sRank, sFile, pieceType, 1, 0);
-    getMovesForPath(moves, b, sRank, sFile, pieceType, 0, -1);
-    getMovesForPath(moves, b, sRank, sFile, pieceType, 0, 1);
+void addMovesForDirectPath(std::vector<Move> &moves, const Board &b, int sRank, int sFile, uint8_t pieceType, bool isPinned) {
+    if (isPinned) {
+        const PieceElement &k = b.whiteToMove ? b.whitePieces[0] : b.blackPieces[0];
+        if (k.rank - sRank == 0) {
+            getMovesForPath(moves, b, sRank, sFile, pieceType, 0, -1);
+            getMovesForPath(moves, b, sRank, sFile, pieceType, 0, 1);
+        } else {
+            getMovesForPath(moves, b, sRank, sFile, pieceType, -1, 0);
+            getMovesForPath(moves, b, sRank, sFile, pieceType, 1, 0);
+        }
+    } else {
+        getMovesForPath(moves, b, sRank, sFile, pieceType, -1, 0);
+        getMovesForPath(moves, b, sRank, sFile, pieceType, 1, 0);
+        getMovesForPath(moves, b, sRank, sFile, pieceType, 0, -1);
+        getMovesForPath(moves, b, sRank, sFile, pieceType, 0, 1);
+    }
 }
 
-void addMovesForQueen(std::vector<Move> &moves, const Board &b, int sRank, int sFile) {
-    addMovesForDiagonals(moves, b, sRank, sFile, QUEEN);
-    addMovesForDirectPath(moves, b, sRank, sFile, QUEEN);
+void addMovesForQueen(std::vector<Move> &moves, const Board &b, int sRank, int sFile, bool isPinned) {
+    addMovesForDiagonals(moves, b, sRank, sFile, QUEEN, isPinned);
+    addMovesForDirectPath(moves, b, sRank, sFile, QUEEN, isPinned);
 }
 
 void addMovesForKnight(std::vector<Move> &moves, const Board &b, int sRank, int sFile) {
@@ -257,8 +281,13 @@ void addMovesForPawnAdvance(std::vector<Move> &moves, const Board &b, int sRank,
     if (b.whiteToMove) {
         if (sRank > adjRank(2)) {
             bool isPromote = sRank + dRank == PADDING + 8 - 1;
-            moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, false));
-
+            if (isPromote) {
+                moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, QUEEN));
+                moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, BISHOP));
+                moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, KNIGHT));
+            } else {
+                moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, false));
+            }
         } else {
             moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, false));
             if (b.boardMap[sRank + (dRank * 2)][sFile] == EMPTY) {
@@ -269,7 +298,13 @@ void addMovesForPawnAdvance(std::vector<Move> &moves, const Board &b, int sRank,
     } else {
         if (sRank < adjRank(7)) {
             bool isPromote = sRank + dRank == PADDING + 8 - 1;
-            moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, false));
+            if (isPromote) {
+                moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, QUEEN));
+                moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, BISHOP));
+                moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, KNIGHT));
+            } else {
+                moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, false));
+            }
 
         } else {
             moves.emplace_back(Move(PAWN, sRank, sFile, sRank + dRank, sFile, EMPTY, 0, false));
@@ -280,32 +315,32 @@ void addMovesForPawnAdvance(std::vector<Move> &moves, const Board &b, int sRank,
     }
 }
 
-void addMovesForPawn(std::vector<Move> &moves, const Board &b, int sRank, int sFile) {
+void addMovesForPawn(std::vector<Move> &moves, const Board &b, int sRank, int sFile, bool isPinned) {
     int dRank = b.whiteToMove ? 1 : -1;
     addMovesForPawnAdvance(moves, b, sRank, sFile, dRank);
     addMovesForPawnCapture(moves, b, sRank, sFile, dRank, -1);
     addMovesForPawnCapture(moves, b, sRank, sFile, dRank, 1);
 }
 
-void addMovesForPiece(std::vector<Move> &moves, Board &b, const PieceElement &pe) {
+void addMovesForPiece(std::vector<Move> &moves, Board &b, const PieceElement &pe, bool isPinned) {
     switch (pe.pieceType) {
         case KING:
             addMovesForKing(moves, b, pe.rank, pe.file);
             break;
         case QUEEN:
-            addMovesForQueen(moves, b, pe.rank, pe.file);
+            addMovesForQueen(moves, b, pe.rank, pe.file, isPinned);
             break;
         case ROOK:
-            addMovesForDirectPath(moves, b, pe.rank, pe.file, ROOK);
+            addMovesForDirectPath(moves, b, pe.rank, pe.file, ROOK, isPinned);
             break;
         case BISHOP:
-            addMovesForDiagonals(moves, b, pe.rank, pe.file, BISHOP);
+            addMovesForDiagonals(moves, b, pe.rank, pe.file, BISHOP, isPinned);
             break;
         case KNIGHT:
             addMovesForKnight(moves, b, pe.rank, pe.file);
             break;
         case PAWN:
-            addMovesForPawn(moves, b, pe.rank, pe.file);
+            addMovesForPawn(moves, b, pe.rank, pe.file, isPinned);
             break;
         default:
             break;
@@ -320,7 +355,7 @@ bool pawnCanAttack(int pRank, int pFile, int tRank, int tFile, bool isWhite) {
     }
 }
 
-bool checkLineForCheckThreat(const Board &b, int sRank, int sFile, int dRank, int dFile, bool kingIsWhite) {
+bool directionHasCheck(const Board &b, int sRank, int sFile, int dRank, int dFile, bool kingIsWhite) {
     int cRank = sRank;
     int cFile = sFile;
     while (true) {
@@ -390,14 +425,14 @@ bool inCheck(const Board &b, bool isWhite) {
     const PieceElement &king(isWhite ? b.whitePieces[0] : b.blackPieces[0]);
 
     return
-            checkLineForCheckThreat(b, king.rank, king.file, 1, 1, isWhite) ||
-            checkLineForCheckThreat(b, king.rank, king.file, 1, 0, isWhite) ||
-            checkLineForCheckThreat(b, king.rank, king.file, 1, -1, isWhite) ||
-            checkLineForCheckThreat(b, king.rank, king.file, 0, 1, isWhite) ||
-            checkLineForCheckThreat(b, king.rank, king.file, 0, -1, isWhite) ||
-            checkLineForCheckThreat(b, king.rank, king.file, -1, 1, isWhite) ||
-            checkLineForCheckThreat(b, king.rank, king.file, -1, 0, isWhite) ||
-            checkLineForCheckThreat(b, king.rank, king.file, -1, -1, isWhite) ||
+            directionHasCheck(b, king.rank, king.file, 1, 1, isWhite) ||
+            directionHasCheck(b, king.rank, king.file, 1, 0, isWhite) ||
+            directionHasCheck(b, king.rank, king.file, 1, -1, isWhite) ||
+            directionHasCheck(b, king.rank, king.file, 0, 1, isWhite) ||
+            directionHasCheck(b, king.rank, king.file, 0, -1, isWhite) ||
+            directionHasCheck(b, king.rank, king.file, -1, 1, isWhite) ||
+            directionHasCheck(b, king.rank, king.file, -1, 0, isWhite) ||
+            directionHasCheck(b, king.rank, king.file, -1, -1, isWhite) ||
             knightCanAttackPosition(b, king.rank, king.file, !isWhite);
 }
 
@@ -421,23 +456,40 @@ bool inCheck(const Board &b, bool isWhite) {
 //    }
 //}
 
-
-std::vector<Move> getRawMoves(Board &b) {
+std::vector<Move> getMoves(Board &b) {
+    Pins pins = getPinsForBoard(b);
+//    printBitBoard(pins.absolutePinned);
+//    printBitBoard(pins.pinned);
+//    exit(1);
     std::vector<Move> moves;
-    if (b.whiteToMove) {
-        for (PieceElement pe : b.whitePieces) {
-            addMovesForPiece(moves, b, pe);
-        }
-    } else {
-        for (PieceElement pe : b.blackPieces) {
-            addMovesForPiece(moves, b, pe);
+    for (PieceElement pe : b.whiteToMove ? b.whitePieces : b.blackPieces) {
+        int pinIdx = getBitIdx(pe.rank, pe.file);
+        if (pe.pieceType == KING) {
+            std::vector<Move> kingMoves;
+            addMovesForKing(kingMoves, b, pe.rank, pe.file);
+            for (Move m : kingMoves) {
+                b.doMove(m);
+                if (!inCheck(b, !b.whiteToMove)) {
+                    moves.push_back(m);
+                }
+                b.undoMove(m);
+            }
+        } else if (pins.absolutePinned[pinIdx]) {
+            continue;
+        } else {
+            addMovesForPiece(moves, b, pe, pins.pinned[pinIdx]);
         }
     }
     return moves;
 }
 
+
 std::vector<Move> getLegalMoves(Board &b) {
-    std::vector<Move> moves = getRawMoves(b);
+    std::vector<Move> moves;
+    for (PieceElement pe : b.whiteToMove ? b.whitePieces : b.blackPieces) {
+        addMovesForPiece(moves, b, pe, false);
+    }
+
     std::vector<Move> ret;
     for (Move m : moves) {
         b.doMove(m);
@@ -460,7 +512,7 @@ void Board::doMove(const Move &m) {
     PieceElement &pe = whiteToMove ? whitePieces[pieceIdx-WHITE_LIST_START] : blackPieces[pieceIdx-BLACK_LIST_START];
     pe.rank = m.destRank;
     pe.file = m.destFile;
-    if (m.isPromote) {
+    if (m.promoteType) {
         pe.pieceType = QUEEN;
     }
 
@@ -482,7 +534,7 @@ void Board::undoMove(const Move &m) {
     PieceElement &pe = whiteToMove ? whitePieces[pieceIdx-WHITE_LIST_START] : blackPieces[pieceIdx-BLACK_LIST_START];
     pe.rank = m.startRank;
     pe.file = m.startFile;
-    if (m.isPromote) {
+    if (m.promoteType) {
         pe.pieceType = PAWN;
     }
 
@@ -515,7 +567,6 @@ Board::Board(std::string fen) {
         int rank = PADDING+8-1;
         int file = PADDING;
 
-        bool shouldBreak = false;
         bool afterSpace = false;
 
         for (auto it = fen.begin(); it != fen.end(); it++)
@@ -545,7 +596,6 @@ Board::Board(std::string fen) {
             if (std::isdigit(*it)) {
                 int value = *it - '0';
                 int endFile = file+value;
-                assert(endFile > PADDING && endFile < PADDING+8+1);
 
                 for (; file < endFile; file++) {
                     boardMap[rank][file] = EMPTY;
@@ -554,7 +604,6 @@ Board::Board(std::string fen) {
             }
 
             uint8_t pieceType = pieceTypeFromChar(std::tolower(*it));
-            assert(pieceType != INVALID);
             if (std::islower(*it)) {
 //                boardMap[rank][file] = BLACK_LIST_START + blackPieces.size();
                 blackPieces.emplace_back(pieceType, rank, file);
@@ -618,7 +667,18 @@ Move::Move(uint8_t pieceType, uint8_t startRank, uint8_t startFile, uint8_t dest
            uint8_t captureType, uint8_t captureIdx, bool isPromote) : pieceType(pieceType), startRank(startRank),
                                                                       startFile(startFile), destRank(destRank),
                                                                       destFile(destFile), captureType(captureType),
-                                                                      captureIdx(captureIdx), isPromote(isPromote) {}
+                                                                      captureIdx(captureIdx), promoteType(isPromote) {}
+
+bool Move::operator==(const Move &rhs) const {
+    return pieceType == rhs.pieceType &&
+           startRank == rhs.startRank &&
+           startFile == rhs.startFile &&
+           destRank == rhs.destRank &&
+           destFile == rhs.destFile &&
+           captureType == rhs.captureType &&
+           captureIdx == rhs.captureIdx &&
+           promoteType == rhs.promoteType;
+}
 
 double scoreBoard(const Board &b) {
     return sumPieceList(b.whitePieces) - sumPieceList(b.blackPieces);
@@ -665,7 +725,7 @@ PositionEvaluation evaluateHelper(Board &b, int depth, Statistics &stats) {
         return PositionEvaluation(score, std::vector<Move>());
     }
 
-    std::vector<Move> moves = getLegalMoves(b);
+    std::vector<Move> moves = getMoves(b);
     if (moves.empty()) {
         if (inCheck(b, b.whiteToMove)) {
             stats.checkMateEvaluations++;
@@ -753,7 +813,6 @@ std::ostream &operator<<(std::ostream &os, const Statistics &s) {
     return os;
 }
 
-
 PositionEvaluation::PositionEvaluation(double value, const std::vector<Move> &bestMovePath) : value(value),
                                                                                           bestMovePath(bestMovePath) {}
 bool PieceElement::operator==(const PieceElement &rhs) const {
@@ -785,7 +844,7 @@ bool Board::operator==(const Board &rhs) const {
 }
 
 std::string evaluationValueToString(const PositionEvaluation &res) {
-    if (std::fabs(res.value) == std::numeric_limits<double>().max()) {
+    if (std::fabs(res.value) == std::numeric_limits<double>::max()) {
         return std::string("#") + std::to_string((res.bestMovePath.size()+1)/2);
     } else {
         return std::to_string(res.value);
@@ -833,6 +892,82 @@ std::string Board::toFen() const {
     return fen;
 }
 
+void updatePinnedPiecesForDirection(const Board &b, Pins &p, int kRank, int kFile, int dRank, int dFile) {
+    int cRank = kRank;
+    int cFile = kFile;
+
+    bool isDiag = !(dRank == 0 || dFile == 0);
+
+    const PieceElement* pinnedPiecePtr = nullptr;
+    while (true) {
+        cRank += dRank;
+        cFile += dFile;
+
+        uint8_t res = b.boardMap[cRank][cFile];
+        if (res == EMPTY) {
+            continue;
+        } else if (res == INVALID) {
+            return;
+        } else {
+            bool pieceIsWhite = res < BLACK_LIST_START;
+            if (pieceIsWhite == b.whiteToMove) {
+                if (pinnedPiecePtr != nullptr) {
+                    return;
+                }
+                pinnedPiecePtr = &b.pieceElementForBoardValue(res);
+
+            } else {
+
+                const PieceElement &pe = b.pieceElementForBoardValue(res);
+                if (pe.pieceType == QUEEN || (isDiag ? (pe.pieceType == BISHOP) : (pe.pieceType == ROOK))) {
+                    if (pinnedPiecePtr == nullptr) {
+                        return;
+                    }
+                    int pinIdx = getBitIdx(pinnedPiecePtr->rank, pinnedPiecePtr->file);
+                    if (pinnedPiecePtr->pieceType == QUEEN || (isDiag ? (pinnedPiecePtr->pieceType == BISHOP) : (pinnedPiecePtr->pieceType == ROOK))) {
+                        p.pinned[pinIdx] = true;
+                    } else {
+                        p.absolutePinned[pinIdx] = true;
+                    }
+                }
+                return;
+            }
+
+        }
+    }
+}
+
+Pins getPinsForBoard(const Board &b) {
+    const PieceElement &k(b.whiteToMove ? b.whitePieces[0] : b.blackPieces[0]);
+    Pins ret;
+
+    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, 1, 1);
+    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, 1, 0);
+    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, 1, -1);
+    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, 0, 1);
+    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, 0, -1);
+    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, -1, 1);
+    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, -1, 0);
+    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, -1, 1);
+    return ret;
+}
+
+PieceElement& Board::pieceElementForBoardValue(uint8_t boardRes) {
+    if (boardRes < BLACK_LIST_START) {
+        return whitePieces[boardRes-WHITE_LIST_START];
+    } else {
+        return blackPieces[boardRes-BLACK_LIST_START];
+    }
+}
+
+const PieceElement& Board::pieceElementForBoardValue(uint8_t boardRes) const {
+    if (boardRes < BLACK_LIST_START) {
+        return whitePieces[boardRes-WHITE_LIST_START];
+    } else {
+        return blackPieces[boardRes-BLACK_LIST_START];
+    }
+}
+
 Move moveFromString(const std::string &s, const Board &b) {
     uint8_t pieceType = pieceTypeFromChar(s[0]);
     uint8_t sRank;
@@ -861,3 +996,28 @@ Move moveFromString(const std::string &s, const Board &b) {
     return {pieceType, sRank, sFile, dRank, dFile, captureType, captureIdx, isPromote};
 }
 
+void printBitBoard(uint64_t bitBoard) {
+    for (int r = adjRank(8); r >= adjRank(1); r--) {
+        for (int f = adjFile('a'); f <= adjFile('h'); f++) {
+            std::cout << (getBitBoardBit(bitBoard, r, f) ? "1" : "0");
+        }
+        std::cout << '\n';
+    }
+    std::cout << std::endl;
+}
+
+void test() {
+
+    std::cout << getBitIdx(2, 2) << " " <<  getBitIdx(9, 9) << std::endl;
+
+//    Board b("8/8/8/8/5k2/7r/7N/5qRK w - - 0 1");
+    Board b("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+    std::vector<Move> m1 = getMoves(b);
+    std::vector<Move> m2 = getLegalMoves(b);
+
+    std::cout << m1 << std::endl;
+    std::cout << m2 << std::endl;
+
+    std::cout << (m1 == m2);
+}

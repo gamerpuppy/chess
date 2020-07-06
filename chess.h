@@ -33,6 +33,12 @@ const uint8_t PADDING = 2;
 #define unAdjRank(rank) ((int)(rank)-PADDING+1)
 #define unAdjFile(file) ((char)((int)(file)+'a'-PADDING))
 
+#define getBitIdx(rank, file) ((((rank)-PADDING)*8) + (file)-PADDING)
+#define setNthBit(bitmap, n) ((bitmap) |= (1lu << (n)))
+#define getNthBit(bitmap, n) (((bitmap) >> n) & 1lu)
+
+#define setBitBoardBit(bitBoard, rank, file) (setNthBit(bitBoard, getBitIdx(rank, file)))
+#define getBitBoardBit(bitBoard, rank, file) (getNthBit(bitBoard, getBitIdx(rank, file)))
 
 uint8_t pieceTypeFromChar(char c);
 char pieceTypeToChar(uint8_t pt);
@@ -56,12 +62,24 @@ struct Move {
     uint8_t destFile;
     uint8_t captureType;
     uint8_t captureIdx;
-    bool isPromote;
+    uint8_t promoteType;
 
     Move(){}
 
     Move(uint8_t pieceType, uint8_t startRank, uint8_t startFile, uint8_t destRank, uint8_t destFile,
          uint8_t captureType, uint8_t captureIdx, bool isPromote);
+
+    bool operator==(const Move &rhs) const;
+};
+
+struct Pins {
+    std::array<bool, 64> pinned;
+    std::array<bool, 64> absolutePinned;
+
+    Pins() {
+        pinned.fill(false);
+        absolutePinned.fill(false);
+    }
 };
 
 struct Board {
@@ -70,6 +88,7 @@ struct Board {
     uint8_t boardMap[12][12];
     bool whiteToMove;
 
+//    uint64_t attackedSpaces;
 //    int16_t moveCount;
 //    int8_t whiteCastling;
 //    int8_t blackCastling;
@@ -81,6 +100,10 @@ struct Board {
 
     void doMove(const Move &m);
     void undoMove(const Move &m);
+
+    PieceElement& pieceElementForBoardValue(uint8_t boardRes);
+    const PieceElement& pieceElementForBoardValue(uint8_t boardRes) const;
+
 
     bool operator==(const Board &rhs) const;
     char getCharForBoardMapValue(int rank, int file) const;
@@ -122,5 +145,9 @@ double sumPieceList(const std::vector<PieceElement> &pieceList);
 std::string evaluationValueToString(const PositionEvaluation &res);
 Move moveFromString(const std::string &s, const Board &b);
 Evaluation evaluateBoard(Board &b, int maxDepth);
+Pins getPinsForBoard(const Board &b);
+void test();
+
+void printBitBoard(uint64_t bitBoard);
 
 #endif //CHESS_CHESS_H

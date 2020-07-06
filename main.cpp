@@ -23,7 +23,7 @@ void play(std::string fen, bool playerIsWhite, int depth) {
                 std::cout << evaluationValueToString(res.pos) << '\n';
                 return;
             }
-//            std::cout << res.stats << '\n';
+            std::cout << res.stats << '\n';
             Move move = res.pos.bestMovePath[0];
             std::cout << move << std::endl;
             board.doMove(move);
@@ -47,4 +47,15 @@ int main(int argc, const char* argv[]) {
     play(fen, playerIsWhite, depth);
 
     return 0;
+
+//    test();
+//
+//    uint64_t  bitBoard = 0;
+//    int rank = 2;
+//    int file = 4;
+//
+//    setBitBoardBit(bitBoard, rank, file);
+//    std::cout << getBitIdx(rank, file) << '\n';
+//    std::cout << getBitBoardBit(bitBoard, rank, file);
+
 }
