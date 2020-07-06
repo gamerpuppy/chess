@@ -26,6 +26,43 @@ char pieceTypeToChar(uint8_t pt) {
     }
 }
 
+double getPieceScore(uint8_t pieceType) {
+    switch (pieceType) {
+        case QUEEN: return QUEEN_WEIGHT;
+        case ROOK: return ROOK_WEIGHT;
+        case BISHOP: return BISHOP_WEIGHT;
+        case KNIGHT: return KNIGHT_WEIGHT;
+        case PAWN: return PAWN_WEIGHT;
+        default: return 0;
+    }
+}
+
+double sumPieceList(const std::vector<PieceElement> &pieceList) {
+    double sum = 0;
+    for (const PieceElement &pe : pieceList) {
+        sum += getPieceScore(pe.pieceType);
+    }
+    return sum;
+}
+
+double getPieceScoreChange(const Move &m) {
+    if (m.captureType == 0 && m.promoteType == 0) {
+        return 0;
+    }
+
+    if (m.captureType == 0) {
+        if (m.promoteType == 0) {
+            return getPieceScore(m.captureType);
+        }
+    } else {
+        if (m.promoteType == 0) {
+            return getPieceScore(m.promoteType) - getPieceScore(PAWN_WEIGHT);
+        } else {
+            return getPieceScore(m.captureType) + getPieceScore(m.promoteType) - getPieceScore(PAWN_WEIGHT);
+        }
+    }
+}
+
 std::ostream& operator<<(std::ostream &os, const Board &b) {
     for (int r = adjRank(8); r >= adjRank(1); r--) {
         for (int f = adjFile('a'); f <= adjFile('h'); f++) {
@@ -383,7 +420,6 @@ bool directionHasCheck(const Board &b, int sRank, int sFile, int dRank, int dFil
                     return true;
                 }
             }
-            return pieceIsWhite != kingIsWhite;
         }
     }
 }
@@ -436,31 +472,7 @@ bool inCheck(const Board &b, bool isWhite) {
             knightCanAttackPosition(b, king.rank, king.file, !isWhite);
 }
 
-//bool inCheck(const Board &b, bool isWhite) {
-//    if (isWhite) {
-//        PieceElement king = b.whitePieces[0];
-//        for (PieceElement pe : b.blackPieces) {
-//            if (isAttacking(b, false, pe, king.rank, king.file)) {
-//                return true;
-//            }
-//        }
-//        return false;
-//    } else {
-//        PieceElement king = b.blackPieces[0];
-//        for (PieceElement pe : b.whitePieces) {
-//            if (isAttacking(b, true, pe, king.rank, king.file)) {
-//                return true;
-//            }
-//        }
-//        return false;
-//    }
-//}
-
-std::vector<Move> getMoves(Board &b) {
-    Pins pins = getPinsForBoard(b);
-//    printBitBoard(pins.absolutePinned);
-//    printBitBoard(pins.pinned);
-//    exit(1);
+std::vector<Move> getMoves(Board &b, const BoardContext &bc) {
     std::vector<Move> moves;
     for (PieceElement pe : b.whiteToMove ? b.whitePieces : b.blackPieces) {
         int pinIdx = getBitIdx(pe.rank, pe.file);
@@ -474,31 +486,13 @@ std::vector<Move> getMoves(Board &b) {
                 }
                 b.undoMove(m);
             }
-        } else if (pins.absolutePinned[pinIdx]) {
+        } else if (getNthBit(bc.absolutePinned, pinIdx)) {
             continue;
         } else {
-            addMovesForPiece(moves, b, pe, pins.pinned[pinIdx]);
+            addMovesForPiece(moves, b, pe, getNthBit(bc.pinned, pinIdx));
         }
     }
     return moves;
-}
-
-
-std::vector<Move> getLegalMoves(Board &b) {
-    std::vector<Move> moves;
-    for (PieceElement pe : b.whiteToMove ? b.whitePieces : b.blackPieces) {
-        addMovesForPiece(moves, b, pe, false);
-    }
-
-    std::vector<Move> ret;
-    for (Move m : moves) {
-        b.doMove(m);
-        if (!inCheck(b, !b.whiteToMove)) {
-            ret.push_back(m);
-        }
-        b.undoMove(m);
-    }
-    return ret;
 }
 
 bool comparePieceElement(const PieceElement &p1, const PieceElement &p2) {
@@ -554,80 +548,6 @@ void Board::undoMove(const Move &m) {
     boardMap[m.destRank][m.destFile] = boardMapValue;
 }
 
-Board::Board(std::string fen) {
-    {
-        for (int r = 0; r < 12; r++) {
-            for (int f = 0; f < 12 ; f++) {
-                if (r < 2 || r >= 10 || f < 2 || f >= 10) {
-                    boardMap[r][f] = INVALID;
-                }
-            }
-        }
-
-        int rank = PADDING+8-1;
-        int file = PADDING;
-
-        bool afterSpace = false;
-
-        for (auto it = fen.begin(); it != fen.end(); it++)
-        {
-            bool shouldContinue = false;
-            switch (*it) {
-                case ' ':
-                    afterSpace = true;
-                    shouldContinue = true;
-                    break;
-                case '/':
-                    rank--;
-                    file = PADDING;
-                    shouldContinue = true;
-                    break;
-            }
-            if (shouldContinue) {
-                continue;
-            }
-
-            if (afterSpace) {
-                whiteToMove = *it == 'w';
-                break;
-            }
-
-
-            if (std::isdigit(*it)) {
-                int value = *it - '0';
-                int endFile = file+value;
-
-                for (; file < endFile; file++) {
-                    boardMap[rank][file] = EMPTY;
-                }
-                continue;
-            }
-
-            uint8_t pieceType = pieceTypeFromChar(std::tolower(*it));
-            if (std::islower(*it)) {
-//                boardMap[rank][file] = BLACK_LIST_START + blackPieces.size();
-                blackPieces.emplace_back(pieceType, rank, file);
-            } else {
-//                boardMap[rank][file] = WHITE_LIST_START + whitePieces.size();
-                whitePieces.emplace_back(pieceType, rank, file);
-            }
-            file++;
-        }
-
-        std::sort(whitePieces.begin(), whitePieces.end(), comparePieceElement);
-        std::sort(blackPieces.begin(), blackPieces.end(), comparePieceElement);
-
-        for (int i = 0; i < blackPieces.size(); i++) {
-            PieceElement pe = blackPieces[i];
-            boardMap[pe.rank][pe.file] = BLACK_LIST_START + i;
-        }
-        for (int i = 0; i < whitePieces.size(); i++) {
-            PieceElement pe = whitePieces[i];
-            boardMap[pe.rank][pe.file] = WHITE_LIST_START + i;
-        }
-    }
-}
-
 char Board::getCharForBoardMapValue(int rank, int file) const {
     uint8_t res = boardMap[rank][file];
     if (res == EMPTY || res == INVALID) {
@@ -642,25 +562,6 @@ char Board::getCharForBoardMapValue(int rank, int file) const {
         uint8_t pt = whitePieces[listIdx].pieceType;
         return std::toupper(pieceTypeToChar(pt));
     }
-}
-
-double getPieceScore(uint8_t pieceType) {
-    switch (pieceType) {
-        case QUEEN: return 10;
-        case ROOK: return 5;
-        case BISHOP: return 3.1;
-        case KNIGHT: return 3;
-        case PAWN: return 1;
-        default: return 0;
-    }
-}
-
-double sumPieceList(const std::vector<PieceElement> &pieceList) {
-    double sum = 0;
-    for (const PieceElement &pe : pieceList) {
-        sum += getPieceScore(pe.pieceType);
-    }
-    return sum;
 }
 
 Move::Move(uint8_t pieceType, uint8_t startRank, uint8_t startFile, uint8_t destRank, uint8_t destFile,
@@ -680,7 +581,7 @@ bool Move::operator==(const Move &rhs) const {
            promoteType == rhs.promoteType;
 }
 
-double scoreBoard(const Board &b) {
+double getPiecesScore(const Board &b) {
     return sumPieceList(b.whitePieces) - sumPieceList(b.blackPieces);
 }
 
@@ -717,15 +618,15 @@ bool isBetterEvaluationResult(const PositionEvaluation &e1, const PositionEvalua
     return false;
 }
 
-PositionEvaluation evaluateHelper(Board &b, int depth, Statistics &stats) {
+PositionEvaluation evaluateHelper(Board &b, int depth, double pieceScore, Statistics &stats) {
     stats.methodCalls++;
     if (depth == 0) {
-        double score = scoreBoard(b);
         stats.leafNodesReached++;
-        return PositionEvaluation(score, std::vector<Move>());
+        return PositionEvaluation(pieceScore, std::vector<Move>());
     }
 
-    std::vector<Move> moves = getMoves(b);
+    BoardContext bc(b);
+    std::vector<Move> moves = getMoves(b, bc);
     if (moves.empty()) {
         if (inCheck(b, b.whiteToMove)) {
             stats.checkMateEvaluations++;
@@ -742,7 +643,8 @@ PositionEvaluation evaluateHelper(Board &b, int depth, Statistics &stats) {
 
     for (const Move &m : moves) {
         b.doMove(m);
-        PositionEvaluation res = evaluateHelper(b, depth - 1, stats);
+        double newPieceScore = pieceScore + (b.whiteToMove ? 1 : -1) * getPieceScoreChange(m);
+        PositionEvaluation res = evaluateHelper(b, depth - 1, newPieceScore, stats);
         b.undoMove(m);
 
         if (!haveBest || isBetterEvaluationResult(res, best, b.whiteToMove)) {
@@ -760,7 +662,9 @@ PositionEvaluation evaluateHelper(Board &b, int depth, Statistics &stats) {
 Evaluation evaluateBoard(Board &b, int maxDepth) {
     Evaluation e;
     auto start = std::chrono::system_clock::now();
-    e.pos = evaluateHelper(b, maxDepth, e.stats);
+    double pieceScore = sumPieceList(b.whitePieces) - sumPieceList(b.blackPieces);
+
+    e.pos = evaluateHelper(b, maxDepth, pieceScore, e.stats);
     auto end = std::chrono::system_clock::now();
     e.stats.evaluationDurationMillis = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     return e;
@@ -892,66 +796,6 @@ std::string Board::toFen() const {
     return fen;
 }
 
-void updatePinnedPiecesForDirection(const Board &b, Pins &p, int kRank, int kFile, int dRank, int dFile) {
-    int cRank = kRank;
-    int cFile = kFile;
-
-    bool isDiag = !(dRank == 0 || dFile == 0);
-
-    const PieceElement* pinnedPiecePtr = nullptr;
-    while (true) {
-        cRank += dRank;
-        cFile += dFile;
-
-        uint8_t res = b.boardMap[cRank][cFile];
-        if (res == EMPTY) {
-            continue;
-        } else if (res == INVALID) {
-            return;
-        } else {
-            bool pieceIsWhite = res < BLACK_LIST_START;
-            if (pieceIsWhite == b.whiteToMove) {
-                if (pinnedPiecePtr != nullptr) {
-                    return;
-                }
-                pinnedPiecePtr = &b.pieceElementForBoardValue(res);
-
-            } else {
-
-                const PieceElement &pe = b.pieceElementForBoardValue(res);
-                if (pe.pieceType == QUEEN || (isDiag ? (pe.pieceType == BISHOP) : (pe.pieceType == ROOK))) {
-                    if (pinnedPiecePtr == nullptr) {
-                        return;
-                    }
-                    int pinIdx = getBitIdx(pinnedPiecePtr->rank, pinnedPiecePtr->file);
-                    if (pinnedPiecePtr->pieceType == QUEEN || (isDiag ? (pinnedPiecePtr->pieceType == BISHOP) : (pinnedPiecePtr->pieceType == ROOK))) {
-                        p.pinned[pinIdx] = true;
-                    } else {
-                        p.absolutePinned[pinIdx] = true;
-                    }
-                }
-                return;
-            }
-
-        }
-    }
-}
-
-Pins getPinsForBoard(const Board &b) {
-    const PieceElement &k(b.whiteToMove ? b.whitePieces[0] : b.blackPieces[0]);
-    Pins ret;
-
-    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, 1, 1);
-    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, 1, 0);
-    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, 1, -1);
-    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, 0, 1);
-    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, 0, -1);
-    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, -1, 1);
-    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, -1, 0);
-    updatePinnedPiecesForDirection(b, ret, k.rank, k.file, -1, 1);
-    return ret;
-}
-
 PieceElement& Board::pieceElementForBoardValue(uint8_t boardRes) {
     if (boardRes < BLACK_LIST_START) {
         return whitePieces[boardRes-WHITE_LIST_START];
@@ -1006,6 +850,81 @@ void printBitBoard(uint64_t bitBoard) {
     std::cout << std::endl;
 }
 
+
+Board::Board(std::string fen) {
+    {
+        for (int r = 0; r < 12; r++) {
+            for (int f = 0; f < 12 ; f++) {
+                if (r < 2 || r >= 10 || f < 2 || f >= 10) {
+                    boardMap[r][f] = INVALID;
+                }
+            }
+        }
+
+        int rank = PADDING+8-1;
+        int file = PADDING;
+
+        bool afterSpace = false;
+
+        for (auto it = fen.begin(); it != fen.end(); it++)
+        {
+            bool shouldContinue = false;
+            switch (*it) {
+                case ' ':
+                    afterSpace = true;
+                    shouldContinue = true;
+                    break;
+                case '/':
+                    rank--;
+                    file = PADDING;
+                    shouldContinue = true;
+                    break;
+            }
+            if (shouldContinue) {
+                continue;
+            }
+
+            if (afterSpace) {
+                whiteToMove = *it == 'w';
+                break;
+            }
+
+
+            if (std::isdigit(*it)) {
+                int value = *it - '0';
+                int endFile = file+value;
+
+                for (; file < endFile; file++) {
+                    boardMap[rank][file] = EMPTY;
+                }
+                continue;
+            }
+
+            uint8_t pieceType = pieceTypeFromChar(std::tolower(*it));
+            if (std::islower(*it)) {
+//                boardMap[rank][file] = BLACK_LIST_START + blackPieces.size();
+                blackPieces.emplace_back(pieceType, rank, file);
+            } else {
+//                boardMap[rank][file] = WHITE_LIST_START + whitePieces.size();
+                whitePieces.emplace_back(pieceType, rank, file);
+            }
+            file++;
+        }
+
+        std::sort(whitePieces.begin(), whitePieces.end(), comparePieceElement);
+        std::sort(blackPieces.begin(), blackPieces.end(), comparePieceElement);
+
+        for (int i = 0; i < blackPieces.size(); i++) {
+            PieceElement pe = blackPieces[i];
+            boardMap[pe.rank][pe.file] = BLACK_LIST_START + i;
+        }
+        for (int i = 0; i < whitePieces.size(); i++) {
+            PieceElement pe = whitePieces[i];
+            boardMap[pe.rank][pe.file] = WHITE_LIST_START + i;
+        }
+    }
+}
+
 void test() {
 
     std::cout << getBitIdx(2, 2) << " " <<  getBitIdx(9, 9) << std::endl;
@@ -1013,11 +932,68 @@ void test() {
 //    Board b("8/8/8/8/5k2/7r/7N/5qRK w - - 0 1");
     Board b("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
-    std::vector<Move> m1 = getMoves(b);
-    std::vector<Move> m2 = getLegalMoves(b);
+//    std::vector<Move> m1 = getMoves(b);
+//    std::vector<Move> m2 = getLegalMoves(b);
+//
+//    std::cout << m1 << std::endl;
+//    std::cout << m2 << std::endl;
+//
+//    std::cout << (m1 == m2);
+}
 
-    std::cout << m1 << std::endl;
-    std::cout << m2 << std::endl;
+BoardContext::BoardContext(const Board &b) {
+    const PieceElement &k(b.whiteToMove ? b.whitePieces[0] : b.blackPieces[0]);
+    updatePinnedPiecesForDirection(b, k, 1, 1);
+    updatePinnedPiecesForDirection(b, k, 1, 0);
+    updatePinnedPiecesForDirection(b, k, 1, -1);
+    updatePinnedPiecesForDirection(b, k, 0, 1);
+    updatePinnedPiecesForDirection(b, k, 0, -1);
+    updatePinnedPiecesForDirection(b, k, -1, 1);
+    updatePinnedPiecesForDirection(b, k, -1, 0);
+    updatePinnedPiecesForDirection(b, k, -1, 1);
+}
 
-    std::cout << (m1 == m2);
+void BoardContext::updatePinnedPiecesForDirection(const Board &b, const PieceElement &k, int dRank, int dFile) {
+    int cRank = k.rank;
+    int cFile = k.file;
+
+    bool isDiag = !(dRank == 0 || dFile == 0);
+
+    const PieceElement* pinnedPiecePtr = nullptr;
+    while (true) {
+        cRank += dRank;
+        cFile += dFile;
+
+        uint8_t res = b.boardMap[cRank][cFile];
+        if (res == EMPTY) {
+            continue;
+        } else if (res == INVALID) {
+            return;
+        } else {
+            bool pieceIsWhite = res < BLACK_LIST_START;
+            if (pieceIsWhite == b.whiteToMove) {
+                if (pinnedPiecePtr != nullptr) {
+                    return;
+                }
+                pinnedPiecePtr = &b.pieceElementForBoardValue(res);
+
+            } else {
+
+                const PieceElement &pe = b.pieceElementForBoardValue(res);
+                if (pe.pieceType == QUEEN || (isDiag ? (pe.pieceType == BISHOP) : (pe.pieceType == ROOK))) {
+                    if (pinnedPiecePtr == nullptr) {
+                        return;
+                    }
+                    int pinIdx = getBitIdx(pinnedPiecePtr->rank, pinnedPiecePtr->file);
+                    if (pinnedPiecePtr->pieceType == QUEEN || (isDiag ? (pinnedPiecePtr->pieceType == BISHOP) : (pinnedPiecePtr->pieceType == ROOK))) {
+                        setNthBit(pinned, pinIdx);
+                    } else {
+                        setNthBit(absolutePinned, pinIdx);
+                    }
+                }
+                return;
+            }
+
+        }
+    }
 }

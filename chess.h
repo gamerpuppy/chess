@@ -27,6 +27,12 @@ const uint8_t WHITE_LIST_START = 0;
 const uint8_t BLACK_LIST_START = 17;
 const uint8_t PADDING = 2;
 
+const double QUEEN_WEIGHT = 10;
+const double ROOK_WEIGHT = 5;
+const double BISHOP_WEIGHT = 3.1;
+const double KNIGHT_WEIGHT = 3;
+const double PAWN_WEIGHT = 1;
+
 #define adjRank(rank) ((int)(rank)+PADDING-1)
 #define adjFile(file) ((char)(file)-'a'+PADDING)
 
@@ -72,16 +78,6 @@ struct Move {
     bool operator==(const Move &rhs) const;
 };
 
-struct Pins {
-    std::array<bool, 64> pinned;
-    std::array<bool, 64> absolutePinned;
-
-    Pins() {
-        pinned.fill(false);
-        absolutePinned.fill(false);
-    }
-};
-
 struct Board {
     std::vector<PieceElement> whitePieces;
     std::vector<PieceElement> blackPieces;
@@ -104,10 +100,17 @@ struct Board {
     PieceElement& pieceElementForBoardValue(uint8_t boardRes);
     const PieceElement& pieceElementForBoardValue(uint8_t boardRes) const;
 
-
     bool operator==(const Board &rhs) const;
     char getCharForBoardMapValue(int rank, int file) const;
     std::string toFen() const;
+};
+
+struct BoardContext {
+    uint64_t pinned = 0;
+    uint64_t absolutePinned = 0;
+
+    explicit BoardContext(const Board &b);
+    void updatePinnedPiecesForDirection(const Board &b, const PieceElement &k, int dRank, int dFile);
 };
 
 struct Statistics {
@@ -116,7 +119,6 @@ struct Statistics {
     long checkMateEvaluations = 0;
     long staleMateEvaluations = 0;
     long evaluationDurationMillis = 0;
-
 };
 
 struct PositionEvaluation {
@@ -145,7 +147,6 @@ double sumPieceList(const std::vector<PieceElement> &pieceList);
 std::string evaluationValueToString(const PositionEvaluation &res);
 Move moveFromString(const std::string &s, const Board &b);
 Evaluation evaluateBoard(Board &b, int maxDepth);
-Pins getPinsForBoard(const Board &b);
 void test();
 
 void printBitBoard(uint64_t bitBoard);
