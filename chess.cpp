@@ -545,7 +545,6 @@ Board::Board(std::string fen) {
             if (std::isdigit(*it)) {
                 int value = *it - '0';
                 int endFile = file+value;
-                assert(endFile > PADDING && endFile < PADDING+8+1);
 
                 for (; file < endFile; file++) {
                     boardMap[rank][file] = EMPTY;
@@ -554,7 +553,6 @@ Board::Board(std::string fen) {
             }
 
             uint8_t pieceType = pieceTypeFromChar(std::tolower(*it));
-            assert(pieceType != INVALID);
             if (std::islower(*it)) {
 //                boardMap[rank][file] = BLACK_LIST_START + blackPieces.size();
                 blackPieces.emplace_back(pieceType, rank, file);
